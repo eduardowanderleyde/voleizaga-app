@@ -19,7 +19,7 @@ class Player {
   final double height;
   final double weight;
   final String? photoUrl;
-  final DateTime birthDate;
+  final DateTime? birthDate;
   final String nationality;
   final bool isPresent;
 
@@ -29,6 +29,7 @@ class Player {
   final int setting; // Levantamento
   final int reception; // Recepção
   final int serve; // Saque
+  final int block; // Bloqueio
   final int? speed; // Velocidade (opcional)
   final int? communication; // Comunicação (opcional)
 
@@ -45,7 +46,7 @@ class Player {
     required this.height,
     required this.weight,
     this.photoUrl,
-    required this.birthDate,
+    this.birthDate,
     required this.nationality,
     this.isPresent = true,
     required this.attack,
@@ -53,6 +54,7 @@ class Player {
     required this.setting,
     required this.reception,
     required this.serve,
+    required this.block,
     this.speed,
     this.communication,
     this.phone,
@@ -91,8 +93,8 @@ class Player {
 
   // Getter para calcular a média das habilidades
   double get averageSkills {
-    int sum = attack + defense + setting + reception + serve;
-    int count = 5;
+    int sum = attack + defense + setting + reception + serve + block;
+    int count = 6;
 
     if (speed != null) {
       sum += speed!;
@@ -120,13 +122,16 @@ class Player {
       height: json['height'].toDouble(),
       weight: json['weight'].toDouble(),
       photoUrl: json['photo_url'],
-      birthDate: DateTime.parse(json['birth_date']),
+      birthDate: json['birth_date'] != null
+          ? DateTime.parse(json['birth_date'])
+          : null,
       nationality: json['nationality'],
       attack: json['attack'],
       defense: json['defense'],
       setting: json['setting'],
       reception: json['reception'],
       serve: json['serve'],
+      block: json['block'] ?? 5,
       speed: json['speed'],
       communication: json['communication'],
       phone: json['phone'],
@@ -145,13 +150,14 @@ class Player {
       'height': height,
       'weight': weight,
       'photo_url': photoUrl,
-      'birth_date': birthDate.toIso8601String(),
+      'birth_date': birthDate?.toIso8601String(),
       'nationality': nationality,
       'attack': attack,
       'defense': defense,
       'setting': setting,
       'reception': reception,
       'serve': serve,
+      'block': block,
       'speed': speed,
       'communication': communication,
       'phone': phone,
@@ -170,7 +176,7 @@ class Player {
       'height': height,
       'weight': weight,
       'photoUrl': photoUrl,
-      'birthDate': birthDate.toIso8601String(),
+      'birthDate': birthDate?.toIso8601String(),
       'nationality': nationality,
       'isPresent': isPresent,
       'attack': attack,
@@ -178,6 +184,7 @@ class Player {
       'setting': setting,
       'reception': reception,
       'serve': serve,
+      'block': block,
       'speed': speed,
       'communication': communication,
       'phone': phone,
@@ -195,7 +202,9 @@ class Player {
       height: (map['height'] as num).toDouble(),
       weight: (map['weight'] as num).toDouble(),
       photoUrl: map['photoUrl'] as String?,
-      birthDate: DateTime.parse(map['birthDate'] as String),
+      birthDate: map['birthDate'] != null
+          ? DateTime.parse(map['birthDate'] as String)
+          : null,
       nationality: map['nationality'] as String,
       isPresent: map['isPresent'] as bool? ?? true,
       attack: map['attack'] as int,
@@ -203,6 +212,7 @@ class Player {
       setting: map['setting'] as int,
       reception: map['reception'] as int,
       serve: map['serve'] as int,
+      block: map['block'] as int? ?? 5,
       speed: map['speed'] as int?,
       communication: map['communication'] as int?,
       phone: map['phone'] as String?,
@@ -221,16 +231,17 @@ class Player {
     String? photoUrl,
     DateTime? birthDate,
     String? nationality,
+    bool? isPresent,
     int? attack,
     int? defense,
     int? setting,
     int? reception,
     int? serve,
+    int? block,
     int? speed,
     int? communication,
     String? phone,
     String? email,
-    bool? isPresent,
   }) {
     return Player(
       id: id ?? this.id,
@@ -243,16 +254,17 @@ class Player {
       photoUrl: photoUrl ?? this.photoUrl,
       birthDate: birthDate ?? this.birthDate,
       nationality: nationality ?? this.nationality,
+      isPresent: isPresent ?? this.isPresent,
       attack: attack ?? this.attack,
       defense: defense ?? this.defense,
       setting: setting ?? this.setting,
       reception: reception ?? this.reception,
       serve: serve ?? this.serve,
+      block: block ?? this.block,
       speed: speed ?? this.speed,
       communication: communication ?? this.communication,
       phone: phone ?? this.phone,
       email: email ?? this.email,
-      isPresent: isPresent ?? this.isPresent,
     );
   }
 

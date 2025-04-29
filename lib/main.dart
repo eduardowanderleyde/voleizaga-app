@@ -2,11 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:uuid/uuid.dart';
 import 'models/player.dart';
 import 'services/storage_service.dart';
+import 'services/rating_service.dart';
 import 'widgets/radar_chart.dart';
 import 'package:image_picker/image_picker.dart';
 import 'dart:io';
 import 'dart:math';
 import 'package:flutter/foundation.dart';
+import 'screens/team_drawer_screen.dart';
+import 'screens/registration_screen.dart';
+import 'screens/rating_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 // Cores do tema
 const primaryColor = Color(0xFF1E88E5); // Azul principal
@@ -17,11 +22,18 @@ const errorColor = Color(0xFFD32F2F); // Vermelho para erros
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  runApp(const MyApp());
+
+  // Verificar se é o primeiro acesso
+  final prefs = await SharedPreferences.getInstance();
+  final isFirstAccess = prefs.getBool('is_first_access') ?? true;
+
+  runApp(MyApp(isFirstAccess: isFirstAccess));
 }
 
 class MyApp extends StatelessWidget {
-  const MyApp({super.key});
+  final bool isFirstAccess;
+
+  const MyApp({super.key, required this.isFirstAccess});
 
   @override
   Widget build(BuildContext context) {
@@ -52,7 +64,26 @@ class MyApp extends StatelessWidget {
           foregroundColor: Colors.white,
         ),
       ),
-      home: const HomePage(),
+      home: Builder(
+        builder: (context) => isFirstAccess
+            ? RegistrationScreen(
+                onRegister: (player) async {
+                  final prefs = await SharedPreferences.getInstance();
+                  await prefs.setBool('is_first_access', false);
+                  await StorageService.savePlayers([player]);
+
+                  if (context.mounted) {
+                    Navigator.of(context).pushAndRemoveUntil(
+                      MaterialPageRoute(
+                        builder: (context) => const HomePage(),
+                      ),
+                      (route) => false,
+                    );
+                  }
+                },
+              )
+            : const HomePage(),
+      ),
     );
   }
 }
@@ -71,6 +102,8 @@ class _HomePageState extends State<HomePage> {
   List<Player> regularPlayers = [];
   List<Player> waitingList = [];
   List<Player> guestList = [];
+
+  int numberOfTeams = 2;
 
   @override
   void initState() {
@@ -141,6 +174,7 @@ class _HomePageState extends State<HomePage> {
       reception: 5,
       setting: 5,
       serve: 5,
+      block: 5,
     );
     _editPlayer(newPlayer);
   }
@@ -166,215 +200,13 @@ class _HomePageState extends State<HomePage> {
   }
 
   void _sortTeams() {
-    final allPlayers = [...regularPlayers, ...guestList, ...waitingList]
-        .where((p) => p.isPresent)
-        .toList();
-
-    if (allPlayers.length < 6) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Precisa de pelo menos 6 jogadores presentes')),
-      );
-      return;
-    }
-
-    // Separar jogadores por posição
-    final setters =
-        allPlayers.where((p) => p.position == PlayerPosition.setter).toList();
-    final outsides =
-        allPlayers.where((p) => p.position == PlayerPosition.outside).toList();
-    final opposites =
-        allPlayers.where((p) => p.position == PlayerPosition.opposite).toList();
-    final middles =
-        allPlayers.where((p) => p.position == PlayerPosition.middle).toList();
-    final liberos =
-        allPlayers.where((p) => p.position == PlayerPosition.libero).toList();
-
-    // Verificar se há jogadores suficientes para cada posição
-    if (setters.length < 2) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-              'Precisa de pelo menos 2 levantadores para formar times equilibrados'),
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => TeamDrawerScreen(
+          players: [...regularPlayers, ...waitingList, ...guestList],
+          initialNumberOfTeams: numberOfTeams,
         ),
-      );
-      return;
-    }
-
-    if (middles.length < 2) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text(
-              'Precisa de pelo menos 2 centrais para formar times equilibrados'),
-        ),
-      );
-      return;
-    }
-
-    // Calcular número de times possível (2 times no mínimo, 4 no máximo)
-    final maxTeams = min(4, allPlayers.length ~/ 6);
-    if (maxTeams < 2) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content:
-                Text('Jogadores insuficientes para formar times completos')),
-      );
-      return;
-    }
-
-    // Criar combinações de times
-    List<List<List<Player>>> teamCombinations = [];
-
-    // Gerar várias combinações diferentes
-    for (var i = 0; i < 5; i++) {
-      var teams = List.generate(maxTeams, (index) => <Player>[]);
-      var teamScores = List.generate(maxTeams, (index) => 0.0);
-
-      // Distribuir levantadores (garantir 1-2 por time)
-      var shuffledSetters = List<Player>.from(setters)..shuffle();
-      for (var j = 0; j < maxTeams; j++) {
-        if (j < shuffledSetters.length) {
-          teams[j].add(shuffledSetters[j]);
-          teamScores[j] += _getPositionScore(shuffledSetters[j]);
-        }
-      }
-      // Distribuir levantadores restantes
-      for (var j = maxTeams; j < shuffledSetters.length; j++) {
-        var targetTeam = teamScores.indexOf(teamScores.reduce(min));
-        teams[targetTeam].add(shuffledSetters[j]);
-        teamScores[targetTeam] += _getPositionScore(shuffledSetters[j]);
-      }
-
-      // Distribuir centrais (garantir 2 por time)
-      var shuffledMiddles = List<Player>.from(middles)..shuffle();
-      for (var team = 0; team < maxTeams; team++) {
-        var middleCount = 0;
-        for (var middle in shuffledMiddles) {
-          if (!teams.any((t) => t.contains(middle))) {
-            if (teams[team].length < 6 && middleCount < 2) {
-              teams[team].add(middle);
-              teamScores[team] += _getPositionScore(middle);
-              middleCount++;
-            }
-          }
-        }
-      }
-
-      // Distribuir ponteiros
-      var shuffledOutsides = List<Player>.from(outsides)..shuffle();
-      for (var outside in shuffledOutsides) {
-        var targetTeam = teamScores.indexOf(teamScores.reduce(min));
-        if (teams[targetTeam].length < 6) {
-          teams[targetTeam].add(outside);
-          teamScores[targetTeam] += _getPositionScore(outside);
-        }
-      }
-
-      // Distribuir opostos
-      var shuffledOpposites = List<Player>.from(opposites)..shuffle();
-      for (var opposite in shuffledOpposites) {
-        var targetTeam = teamScores.indexOf(teamScores.reduce(min));
-        if (teams[targetTeam].length < 6) {
-          teams[targetTeam].add(opposite);
-          teamScores[targetTeam] += _getPositionScore(opposite);
-        }
-      }
-
-      // Distribuir líberos
-      var shuffledLiberos = List<Player>.from(liberos)..shuffle();
-      for (var libero in shuffledLiberos) {
-        var targetTeam = teamScores.indexOf(teamScores.reduce(min));
-        if (teams[targetTeam].length < 6) {
-          teams[targetTeam].add(libero);
-          teamScores[targetTeam] += _getPositionScore(libero);
-        }
-      }
-
-      // Distribuir jogadores restantes
-      var remainingPlayers = allPlayers
-          .where((p) => !teams.any((team) => team.contains(p)))
-          .toList()
-        ..shuffle();
-
-      for (var player in remainingPlayers) {
-        var targetTeam = teamScores.indexOf(teamScores.reduce(min));
-        if (teams[targetTeam].length < 6) {
-          teams[targetTeam].add(player);
-          teamScores[targetTeam] += _getPositionScore(player);
-        }
-      }
-
-      // Verificar se todos os times têm pelo menos 6 jogadores
-      if (teams.every((team) => team.length >= 6)) {
-        teamCombinations.add(teams);
-      }
-    }
-
-    // Ordenar combinações pela diferença de pontuação entre times
-    teamCombinations.sort((a, b) {
-      var scoreA = a
-          .map((team) => team.map(_getPositionScore).reduce((a, b) => a + b))
-          .toList();
-      var scoreB = b
-          .map((team) => team.map(_getPositionScore).reduce((a, b) => a + b))
-          .toList();
-
-      return (scoreA.reduce(max) - scoreA.reduce(min))
-          .compareTo(scoreB.reduce(max) - scoreB.reduce(min));
-    });
-
-    // Mostrar as melhores sugestões
-    if (teamCombinations.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-            content: Text('Não foi possível gerar times equilibrados')),
-      );
-      return;
-    }
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Sugestões de Times'),
-        content: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (var i = 0; i < min(2, teamCombinations.length); i++) ...[
-                if (i > 0) const Divider(height: 32),
-                Text(
-                  'Sugestão ${i + 1}:',
-                  style: const TextStyle(
-                    fontWeight: FontWeight.bold,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                for (var j = 0; j < teamCombinations[i].length; j++) ...[
-                  Text(
-                    'Time ${String.fromCharCode(65 + j)} (Média: ${(teamCombinations[i][j].map(_getPositionScore).reduce((a, b) => a + b) / teamCombinations[i][j].length).toStringAsFixed(1)}):',
-                    style: const TextStyle(fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 4),
-                  ...teamCombinations[i][j].map((p) => Padding(
-                        padding: const EdgeInsets.only(left: 16),
-                        child: Text(
-                          '${p.name} (${Player.positionToString(p.position)}) - ${_getPositionScore(p).toStringAsFixed(1)}',
-                        ),
-                      )),
-                  const SizedBox(height: 8),
-                ],
-              ],
-            ],
-          ),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Fechar'),
-          ),
-        ],
       ),
     );
   }
@@ -410,13 +242,14 @@ class _HomePageState extends State<HomePage> {
     String? photoUrl = player.photoUrl;
     double height = player.height;
     double weight = player.weight;
-    DateTime birthDate = player.birthDate;
+    DateTime? birthDate = player.birthDate;
     String nationality = player.nationality;
     int attack = player.attack;
     int defense = player.defense;
     int reception = player.reception;
     int setting = player.setting;
     int serve = player.serve;
+    int block = player.block;
     int? speed = player.speed;
     int? communication = player.communication;
     String? phone = player.phone;
@@ -567,6 +400,11 @@ class _HomePageState extends State<HomePage> {
                   value: serve,
                   onChanged: (value) => setDialogState(() => serve = value),
                 ),
+                _buildAttributeSlider(
+                  label: 'Bloqueio',
+                  value: block,
+                  onChanged: (value) => setDialogState(() => block = value),
+                ),
                 const SizedBox(height: 16),
                 const Text(
                   'Atributos Opcionais',
@@ -666,6 +504,7 @@ class _HomePageState extends State<HomePage> {
                   reception: reception,
                   setting: setting,
                   serve: serve,
+                  block: block,
                   speed: speed,
                   communication: communication,
                   phone: phone,
@@ -808,6 +647,33 @@ class _HomePageState extends State<HomePage> {
               mainAxisSize: MainAxisSize.min,
               children: [
                 IconButton(
+                  icon: const Icon(Icons.star_border, color: Colors.amber),
+                  onPressed: () {
+                    Navigator.push(
+                      context,
+                      MaterialPageRoute(
+                        builder: (context) => RatingScreen(
+                          player: player,
+                          rater: regularPlayers
+                              .first, // Temporário: usar o primeiro jogador como avaliador
+                          onSubmit: (rating) async {
+                            await RatingService.saveRating(rating);
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                const SnackBar(
+                                  content:
+                                      Text('Avaliação enviada com sucesso!'),
+                                ),
+                              );
+                            }
+                          },
+                        ),
+                      ),
+                    );
+                  },
+                  tooltip: 'Avaliar jogador',
+                ),
+                IconButton(
                   icon: const Icon(Icons.edit, color: Colors.blue),
                   onPressed: () => _editPlayer(player),
                   tooltip: 'Editar jogador',
@@ -867,6 +733,7 @@ class _HomePageState extends State<HomePage> {
                     _buildAttributeRow('Recepção', player.reception),
                     _buildAttributeRow('Levantamento', player.setting),
                     _buildAttributeRow('Saque', player.serve),
+                    _buildAttributeRow('Bloqueio', player.block),
                     if (player.speed != null ||
                         player.communication != null) ...[
                       const SizedBox(height: 8),
@@ -1049,6 +916,34 @@ class _HomePageState extends State<HomePage> {
                         horizontal: 24,
                         vertical: 12,
                       ),
+                    ),
+                  ),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    decoration: BoxDecoration(
+                      color: Colors.green,
+                      borderRadius: BorderRadius.circular(4),
+                    ),
+                    child: DropdownButton<int>(
+                      value: numberOfTeams,
+                      dropdownColor: Colors.green,
+                      style: const TextStyle(color: Colors.white, fontSize: 16),
+                      icon: const Icon(Icons.arrow_drop_down,
+                          color: Colors.white),
+                      underline: Container(),
+                      items: [2, 3, 4].map((int value) {
+                        return DropdownMenuItem<int>(
+                          value: value,
+                          child: Text('$value Times'),
+                        );
+                      }).toList(),
+                      onChanged: (int? newValue) {
+                        if (newValue != null) {
+                          setState(() {
+                            numberOfTeams = newValue;
+                          });
+                        }
+                      },
                     ),
                   ),
                   ElevatedButton.icon(
