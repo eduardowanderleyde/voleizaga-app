@@ -23,11 +23,17 @@ const errorColor = Color(0xFFD32F2F); // Vermelho para erros
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
+  // Limpar todos os dados salvos e forçar o uso dos jogadores padrão
+  await StorageService.clearAll();
+
   // Verificar se é o primeiro acesso
   final prefs = await SharedPreferences.getInstance();
   final isFirstAccess = prefs.getBool('is_first_access') ?? true;
 
-  runApp(MyApp(isFirstAccess: isFirstAccess));
+  // Forçar isFirstAccess como false para pular a tela de registro
+  await prefs.setBool('is_first_access', false);
+
+  runApp(MyApp(isFirstAccess: false));
 }
 
 class MyApp extends StatelessWidget {
