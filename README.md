@@ -1,6 +1,6 @@
 # Vôlei Zaga App 🏐
 
-Um aplicativo Flutter para gerenciamento de jogadores de vôlei e organização de times.
+Um aplicativo Flutter + Python para gerenciamento de jogadores de vôlei e organização de times.
 
 ## 🌟 Funcionalidades
 
